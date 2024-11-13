@@ -1,0 +1,153 @@
+import pandas as pd
+from datetime import datetime, timedelta
+from IPython.display import display, clear_output
+import ipywidgets as widgets
+import os
+
+FILENAME = "monthly_checklist_data.csv"
+
+def load_data():
+    if os.path.exists(FILENAME):
+        df = pd.read_csv(FILENAME)
+        if 'Status' not in df.columns:
+            df['Status'] = 'Not Started'
+        if 'Priority' not in df.columns:
+            df['Priority'] = 'Low'
+        df['Task'] = df['Task'].fillna('')
+        df['Status'] = df['Status'].fillna('Not Started')
+        df['Priority'] = df['Priority'].fillna('Low')
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce').dt.date
+        return df
+    else:
+        return pd.DataFrame(columns=["Date", "Task", "Status", "Priority"])
+
+def save_data():
+    data.to_csv(FILENAME, index=False)
+
+data = load_data()
+
+def get_past_30_days():
+    return [(datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(30)]
+
+def display_checklist(date):
+    clear_output()
+    display(date_selector, task_input, priority_dropdown, add_task_button, checkboxes, author_info)
+    day_data = data[data['Date'] == date]
+
+    if day_data.empty:
+        no_task_message = widgets.HTML(value="<b>No tasks for this date. Please add a new task.</b>")
+        display(no_task_message)
+    
+    items = []
+    
+    for i, row in day_data.iterrows():
+        task_description = row['Task'] if pd.notna(row['Task']) else ''
+        
+        task_label = widgets.Label(value=f"Task {i+1}", layout=widgets.Layout(width='80px', padding='5px'))
+        
+        priority_dropdown_widget = widgets.Dropdown(
+            options=["Low", "Medium", "High"],
+            value=row['Priority'],
+            description='Priority:',
+            style={'description_width': 'initial'},
+            layout=widgets.Layout(width='120px'),
+            disabled=False
+        )
+        priority_dropdown_widget.observe(lambda change, i=i: toggle_priority(date, i, change), names='value')
+
+        status_dropdown = widgets.Dropdown(
+            options=["Not Started", "In Progress", "Completed"],
+            value=row['Status'],
+            description='Status:',
+            style={'description_width': 'initial'},
+            layout=widgets.Layout(width='200px'),
+            disabled=False
+        )
+        status_dropdown.observe(lambda change, i=i: toggle_task_status(date, i, change), names='value')
+
+        delete_button = widgets.Button(
+            description="🗑️",
+            layout=widgets.Layout(width='30px', height='30px', padding='5px'),
+            style={'button_color': 'red', 'font_weight': 'bold'},
+            tooltip="Delete Task"
+        )
+        delete_button.on_click(lambda b, i=i: delete_task(date, i))
+
+        task_box = widgets.HBox([
+            task_label,
+            widgets.Label(value=task_description, layout=widgets.Layout(width='250px', padding='5px')),
+            priority_dropdown_widget,
+            status_dropdown,
+            delete_button
+        ], layout=widgets.Layout(margin='5px 0px', align_items='center', justify_content='space-between'))
+
+        items.append(task_box)
+
+    checkboxes.children = items
+
+def toggle_task_status(date, index, change):
+    data.loc[(data['Date'] == date) & (data.index == index), 'Status'] = change['new']
+    save_data()
+
+def toggle_priority(date, index, change):
+    data.loc[(data['Date'] == date) & (data.index == index), 'Priority'] = change['new']
+    save_data()
+
+def delete_task(date, index):
+    global data
+    data = data.drop(index)
+    save_data()
+    display_checklist(date)
+
+def add_task(date, task_text, priority):
+    global data
+    new_task = pd.DataFrame({"Date": [date], "Task": [task_text], "Status": ['Not Started'], "Priority": [priority]})
+    data = pd.concat([data, new_task], ignore_index=True)
+    save_data()
+    task_input.value = ""
+    display_checklist(date)
+
+def on_date_change(change):
+    display_checklist(change['new'])
+
+def on_add_task(b):
+    add_task(date_selector.value, task_input.value, priority_dropdown.value)
+
+date_selector = widgets.DatePicker(
+    description='Select Date:',
+    value=datetime.now(),
+    style={'description_width': 'initial'},
+    layout=widgets.Layout(width='250px')
+)
+date_selector.observe(on_date_change, names='value')
+
+task_input = widgets.Text(
+    description='New Task:',
+    placeholder='Enter a task',
+    style={'description_width': 'initial'},
+    layout=widgets.Layout(width='350px')
+)
+
+priority_dropdown = widgets.Dropdown(
+    options=["Low", "Medium", "High"],
+    description="Priority:",
+    style={'description_width': 'initial'},
+    layout=widgets.Layout(width='150px')
+)
+
+add_task_button = widgets.Button(
+    description="Add Task",
+    style={'button_color': 'lightblue', 'font_weight': 'bold'},
+    layout=widgets.Layout(width='120px', height='40px')
+)
+add_task_button.on_click(on_add_task)
+
+checkboxes = widgets.VBox(
+    layout=widgets.Layout(width='100%', padding='15px', align_items='flex-start', justify_content='space-between')
+)
+
+author_info = widgets.HTML(
+    value="<br><br><br><br><b>Author:</b> Nahid<br><b>Additional Information:</b> This checklist is built to track tasks and their statuses, with priority levels to ensure efficient task management. All data is saved in a CSV file for persistent storage."
+)
+
+display(date_selector, task_input, priority_dropdown, add_task_button, checkboxes, author_info)
